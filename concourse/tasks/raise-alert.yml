@@ -1,0 +1,21 @@
+
+---
+platform: linux
+
+image_resource:
+    type: registry-image
+    source:
+        repository: registry.cloud.sky/cec/slingshot
+        tag: latest
+        username: ((registry-pull-username))
+        password: ((registry-pull-token))
+inputs:
+    - name: error
+    - name: cec-aws-account-governance    
+run:
+    path: sh
+    args:
+      - -exc
+      - |
+         chmod +x cec-aws-account-governance/concourse/scripts/raise-alert.sh
+         ./cec-aws-account-governance/concourse/scripts/raise-alert.sh

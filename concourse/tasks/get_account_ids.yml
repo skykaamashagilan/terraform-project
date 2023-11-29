@@ -1,0 +1,25 @@
+---
+platform: linux
+
+image_resource:
+    type: registry-image
+    source:
+        repository: ((slingshot_container_name))
+        username: ((registry-pull-username))
+        password: ((registry-pull-token))
+        tag: latest
+
+inputs:
+    - name: cec-aws-account-governance
+    - name: aws-account-info
+
+outputs:
+    - name: data
+
+params:
+    script_path: cec-aws-account-governance/scripts
+    deployment_folder_path: cec-aws-account-governance/deployment_maps
+    script_names: get_account_ids.py read_deployment_map.py
+
+run:
+    path: cec-aws-account-governance/concourse/scripts/get_account_ids.sh

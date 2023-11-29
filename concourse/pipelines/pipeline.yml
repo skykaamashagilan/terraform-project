@@ -1,0 +1,231 @@
+---
+resource_types:
+  - name: metadata
+    type: registry-image
+    source:
+      repository: olhtbr/metadata-resource
+      tag: 2.0.1
+
+# Use YAML anchors to keep us DRY in our Tasks/Jobs
+git_resource_params: &git_resource_params
+  branch: ((branch_name))
+  username: ((github_username))
+  password: ((github_pat))
+
+cag_params: &cag_params
+  script_path: ./cec-concourse-raise-alert/scripts
+  script_name: raise_alert.py
+  cag_endpoint: ((cag_endpoint))
+  cag_api_key: ((cag_api_key))
+  monitored_item: cec-aws-account-governance
+  severity: P4
+  affected_ci: UK - Amazon Web Services (AWS) - Concourse Continuous Integration (CEC)
+  assign_to: ((assign_to))
+  monitoring_group: cec-aws-account-governance
+  monitoring_system: https://concourseci.cec.cloud.sky/
+
+cag_failure_notification: &cag_failure_notification
+  task: raise-alert
+  file: cec-concourse-raise-alert/tasks/raise_alert.yml
+  params:
+    <<: *cag_params
+    alert_summary: ((.:pipeline-name)) failed - job ((.:job-name)) - build ((.:build-name))
+    detailed_description: The Concourse CI Pipeline ((.:pipeline-name)) failed while running the job ((.:job-name)) and build ((.:build-name)).
+
+load_common_build_vars: &load_common_build_vars
+  - load_var: pipeline-name
+    file: collect-data/build_pipeline_name
+    reveal: true
+  - load_var: job-name
+    file: collect-data/build_job_name
+    reveal: true
+  - load_var: build-name
+    file: collect-data/build_name
+    reveal: true
+  - load_var: team-name
+    file: collect-data/build_team_name
+    reveal: true
+
+
+cag_check_and_throw_errors: &cag_check_and_throw_errors  # Task definition to check for errors
+  file: cec-slingshot-raise-alert/tasks/raise_error.yml
+  params:
+    BUCKET_NAME: slingshot-pipeline-errors
+    PIPELINE_NAME: ((.:pipeline-name))
+    BUILD_NAME: ((.:build-name))
+    JOB_NAME: ((.:job-name))
+    TEAM_NAME: ((.:team-name))
+    TASK_NAME: ((.:job-name))((.:boundary.count))
+    GOOGLE_CREDENTIALS: ((gcp_automation_read_only_sky_uk))
+
+cag_send_error_notification: &cag_send_error_notification
+  file: cec-slingshot-raise-alert/tasks/handle_error.yml
+  params:
+    BUCKET_NAME: slingshot-pipeline-errors
+    PIPELINE_NAME: ((.:pipeline-name))
+    BUILD_NAME: ((.:build-name))
+    JOB_NAME: ((.:job-name))
+    TEAM_NAME: ((.:team-name))
+    GOOGLE_CREDENTIALS: ((gcp_automation_read_only_sky_uk))
+    <<: *cag_params
+
+cag_error_notification: &cag_error_notification
+  task: raise-error
+  file: cec-concourse-raise-alert/tasks/raise_alert.yml
+  params:
+    <<: *cag_params
+    alert_summary: ((.:pipeline-name)) errored - job ((.:job-name)) - build ((.:build-name))
+    detailed_description: The Concourse CI Pipeline ((.:pipeline-name)) raised an error while running the job ((.:job-name)) and build ((.:build-name)).
+
+common_task_params: &common_task_params  # These Task params are common to all our Bootstrap/Baseline Tasks
+  google_credentials: ((gcp_automation_read_only_sky_uk))
+  access_key: ((access_key))
+  secret_key: ((secret_key))
+  github_username_encoded: ((github_username_encoded))
+  github_pat: ((github_pat))
+  branch_name: ((branch_name))
+  bucket_name: ((bucket_name))
+  role_name: ((terraform_role_name))
+  master_payer_id: ((master_payer_id))
+
+baseline_terraform_project_params: &baseline_terraform_project_params  # These Task params are specific but common to to our Guard Duty Security Baseline Task
+  terraform_folder: "terraform/terraform-guard-duty-security-config" # ??? give the exact terraform folder name ????
+  role_name: ((terraform_role_name))
+
+generate_boundaries_params:  &generate_boundaries_params
+  job_name: ((.:job-name))
+  upper_bound: 30
+
+generate_boundaries: &generate_boundaries
+  task: generate-boundaries
+  file: terraform-project/concourse/tasks/generate_boundary.yml
+  vars:
+    terraform_container_name: ((custom_image))
+
+upload_boundaries: &upload_boundaries
+  put: s3-shared-files
+  params:
+      file: boundaries_output/*.json
+
+load_boundaries: &load_boundaries
+  load_var: boundaries
+  file: s3-shared-files/((.:job-name)).json
+
+upload_terraform_params: &upload_terraform_params
+  tf_output_bucket_name: terraform-output-plan
+  branch_name: ((branch_name))
+  job_name: ((.:job-name))
+  GOOGLE_CREDENTIALS: ((gcp_automation_read_only_sky_uk))
+
+terraform_container_vars: &terraform_container_vars
+  terraform_container_name: ((go_custom_image))
+  terraform_container_tag: ((go_custom_image_tag))
+
+
+resources:
+  - name: cec-concourse-raise-alert
+    type: git
+    icon: github
+    source:
+      uri: https://github.com/sky-uk/cec-concourse-raise-alert.git
+      <<: *git_resource_params
+      branch: main
+  - name: collect-data
+    type: metadata
+    icon: card-bulleted-outline
+  - name: cec-aws-tf-stno-spoke
+    type: git
+    icon: github
+    source:
+      uri: https://github.com/sky-uk/cec-aws-tf-stno-spoke.git
+      <<: *git_resource_params
+  - name: terraform-project
+    type: git
+    icon: github
+    source:
+      uri: https://github.com/skykaamashagilan/terraform-project.git
+      <<: *git_resource_params
+  - name: aws-account-info
+    type: git
+    icon: aws
+    source:
+      uri: https://git-codecommit.eu-west-1.amazonaws.com/v1/repos/((code_commit_repo_name))
+      branch: master
+      username: ((code_commit_access_key))
+      password: ((code_commit_secret_key))
+  - name: terraform module
+    type: git
+    icon: github
+    source:
+      uri: https://github.com/sky-uk/cec-aws-tf-identity.git # ?? give terraform module folder path.
+      <<: *git_resource_params
+  - name: cec-slingshot-raise-alert
+    type: git
+    icon: github
+    source:
+      uri: https://github.com/sky-uk/cec-slingshot-raise-alert.git
+      <<: *git_resource_params
+  - name: s3-shared-files
+    type: s3
+    icon: aws
+    source:
+      bucket: aws-tf-slingshot-test-go
+      access_key_id: ((aws-slingshot-terraform-test-user_key_id))
+      secret_access_key: ((aws-slingshot-terraform-test-user_secret_id))
+      regexp: boundaries/(.*).json
+
+jobs:
+  - name: terraform-project
+    serial: true # Make it serial so only 1 can run at a time
+    plan:
+      - in_parallel: # Do these gets in parallel to speed things up
+          - get: cec-aws-tf-config  # ?? original terraform module we have to keep.
+            trigger: true
+          - get: aws-account-info
+            trigger: true
+          - get: terraform-project
+          - put: collect-data
+          - get: cec-slingshot-raise-alert
+      - in_parallel:
+          *load_common_build_vars
+      - task: get-account-ids
+        file: terraform-project/concourse/tasks/get_account_ids.yml
+        vars:
+          terraform_container_name: ((custom_image))
+        params:
+          access_key: ((access_key))
+          secret_key: ((secret_key))
+          deployment_name: baseline-config # ?? mention the correct deployment name.
+      - <<: *generate_boundaries
+        params:  # Overrride the default value in the YAML anchor
+          <<: *generate_boundaries_params
+      - *upload_boundaries
+      - *load_boundaries
+
+      - task: terraform-module
+        file: terraform-project/concourse/tasks/terraform_aws_plan_apply.yml
+        vars:
+          terraform_container_name: ((custom_image))
+        params:
+          <<: *common_task_params
+          <<: *baseline_terraform_project_params
+          lower_bound: 0
+          upper_bound: 1  # Only the one account in scope here, the Payer account
+        on_failure:
+          do:
+            - *cag_failure_notification
+        on_error:
+          do:
+            - *cag_error_notification
+
+
+
+
+
+
+
+
+
+
+
+

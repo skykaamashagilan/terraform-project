@@ -1,0 +1,40 @@
+---
+resources:
+  - name: test-code
+    type: git
+    icon: github
+    check_every: 1m
+    source:
+      uri: https://github.com/skykaamashagilan/terraform-project.git
+      branch: test
+      username: ((github_username))
+      password: ((github_pat))
+      disable_ci_skip: true
+  - name: prod-code
+    type: git
+    icon: github
+    check_every: 1m
+    source:
+      uri: https://github.com/skykaamashagilan/terraform-project.git
+      branch: main
+      username: ((github_username))
+      password: ((github_pat))
+      disable_ci_skip: true
+
+jobs:
+  - name: configure-test-pipeline
+    plan:
+      - get: test-code
+        trigger: true
+      - set_pipeline: terraform-project-test
+        file: test-code/concourse/pipelines/pipeline.yml
+        var_files:
+          - test-code/concourse/pipelines/variables-test.yml
+  - name: configure-prod-pipeline
+    plan:
+      - get: prod-code
+        trigger: true
+      - set_pipeline: terraform-project-prod
+        file: prod-code/concourse/pipelines/pipeline.yml
+        var_files:
+          - prod-code/concourse/pipelines/variables-prod.yml

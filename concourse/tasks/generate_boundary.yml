@@ -1,0 +1,31 @@
+
+---
+platform: linux
+
+image_resource:
+    type: registry-image
+    source:
+        repository: ((slingshot_container_name))
+        tag: latest
+        username: ((registry-pull-username))
+        password: ((registry-pull-token))
+inputs:
+    - name: cec-aws-account-governance
+    - name: aws-account-info
+    - name: data
+
+outputs:
+  - name: boundaries_output
+  
+params:
+    script_name: cec-aws-account-governance/scripts/gen_boundary_vars.py
+    job_name: ((job_name))
+    output_dir: boundaries_output
+
+run:
+    path: sh
+    args:
+      - -exc
+      - |
+         chmod +x cec-aws-account-governance/concourse/scripts/generate_boundaries.sh
+         ./cec-aws-account-governance/concourse/scripts/generate_boundaries.sh

@@ -1,0 +1,25 @@
+---
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: ((slingshot_container_name))
+    username: ((registry-pull-username))
+    password: ((registry-pull-token))
+    tag: latest
+
+inputs:
+  - name: cec-aws-account-governance
+  - name: aws-account-info
+  - name: data
+
+outputs:
+  - name: data
+  - name: cec-aws-account-governance
+
+params:
+  sts_session_duration: 900
+
+run:
+  path: cec-aws-account-governance/concourse/scripts/terraform_aws_plan_apply.sh
